@@ -83,10 +83,12 @@ class CXLogger(object):
 
 def generate_route(T=1500, mean_acc=default_acc, drag=default_drag,
                    kappa=100.0, max_acc=default_acc, min_acc=0.0,
-                   vary_speed=False):
+                   vary_speed=False, seed=None):
     """Generate a random outbound route using bee_simulator physics.
     The rotations are drawn randomly from a von mises distribution and smoothed
     to ensure the agent makes more natural turns."""
+    if seed:
+        np.random.seed(seed)
     # Generate random turns
     mu = 0.0
     vm = np.random.vonmises(mu, kappa, T)
@@ -171,7 +173,7 @@ def generate_memory(headings, velocity, cx, bump_shift=0.0, filtered_steps=0.0,
 def homing(T, tb1, memory, cx, acceleration=default_acc, drag=default_drag,
            current_heading=0.0, current_velocity=np.array([0.0, 0.0]),
            turn_sharpness=1.0, logging=True, bump_shift=0.0,
-           filtered_steps=0.0):
+           filtered_steps=0.0, **kwargs):
     """Based on current state, return home. First is duplicate"""
     headings = np.empty(T + 1)
     headings[0] = current_heading
@@ -348,3 +350,139 @@ def generate_dataset(T_outbound=1500, T_inbound=1500, noise=0.1, N=1000,
             save_dataset(H, V, cpu4_snapshot, T_outbound, T_inbound, noise, N,
                          **kwargs)
     return H, V, cpu4_snapshot
+
+
+def parse_walk_func_output(walk_func, data):
+    if walk_func == homing:
+        print('homing')
+        h, v, log = data
+        return {'h': h, 'v': v, 'log': log, 'pos': None}
+    if walk_func == walking:
+        print('walking')
+        return data
+
+
+def run_trial_switch(T_outbound=1500, T_inbound=1500,
+              acc_in=0.1, noise=0.1, weight_noise=0.0,
+              cx=None, cx_class=cx_rate.CXRatePontinSwitch, logging=True, bump_shift=0.0,
+              filtered_steps=0.0, drag=default_drag, tn_prefs=np.pi/4.0, mode='Nest', walk_func=homing, reward_radius=50):
+    """Generate outbound and inbound route and store results.
+
+    Arguments:
+    bump_shift refers to TB1 'pre-emting' activity in the direction of
+    motion."""
+
+    if cx is None:
+        cx = cx_class(noise=noise, weight_noise=weight_noise,
+                      tn_prefs=tn_prefs)
+
+    tb1 = np.zeros(central_complex.N_TB1)
+
+    memory = init_memory()
+    init_heading = 0
+    init_velocity = 0.1
+
+    cx.set_cpu4_listen(False)
+
+    outbound_data = walk_func(
+        T=T_outbound, tb1=tb1, memory=memory, cx=cx,
+        acceleration=acc_in, current_heading=init_heading,
+        current_velocity=init_velocity, logging=logging, bump_shift=bump_shift,
+        filtered_steps=filtered_steps, drag=drag)
+
+    outbound_data = parse_walk_func_output(walk_func, outbound_data)
+    # will not work without logging
+
+    memory = outbound_data['log'].memory[:, -1]
+    cpu4_snapshot = memory.copy()
+    reward = None
+    if mode == 'FlyFood':
+        memory = init_memory()
+        reward = {'center': outbound_data['pos'][-1], 'radius': reward_radius}
+
+    cx.set_cpu4_listen(True)
+
+    # Start homing and store headings, velocity and cell activity.
+
+    last_pos = None
+    if 'pos' in outbound_data:
+        last_pos = outbound_data['pos'][-1]
+    inbound_data = walk_func(
+        T=T_inbound, tb1=tb1, memory=memory, cx=cx,
+        acceleration=acc_in, current_heading=outbound_data['h'][-1],
+        current_velocity=outbound_data['v'][-1], logging=logging, bump_shift=bump_shift,
+        filtered_steps=filtered_steps, drag=drag, current_pos=last_pos, reward=reward)
+
+    inbound_data = parse_walk_func_output(walk_func, inbound_data)
+
+    results = {'cpu4_snapshot': cpu4_snapshot,
+               'h': np.hstack([outbound_data['h'], inbound_data['h']]),
+               'v': np.vstack([outbound_data['v'], inbound_data['v']])}
+    if 'pos' in outbound_data:
+        results['pos'] = np.vstack([outbound_data['pos'], inbound_data['pos']])
+
+    if logging:
+        results['log'] = outbound_data['log'] + inbound_data['log']
+    if 'in_reward' in inbound_data:
+        results['in_reward'] = inbound_data['in_reward']
+    return results
+
+
+def init_memory():
+    memory = 0.5 * np.ones(central_complex.N_CPU4)
+    return memory
+
+
+def point_in_reward(coords, reward):
+    if reward is None:
+        return False
+    cx, cy = reward['center']
+    r = reward['radius']
+    x, y = coords
+    return (x-cx)**2 + (y-cy)**2 <= r**2
+
+
+def walking(T, tb1, memory, cx, acceleration=default_acc, drag=default_drag,
+           current_heading=0.0, current_velocity=np.array([0.0, 0.0]),
+           turn_sharpness=1.0, logging=True, bump_shift=0.0,
+           filtered_steps=0.0, current_pos=[0, 0], reward=None):
+
+    headings = np.empty(T + 1)
+    headings[0] = current_heading
+    velocity = np.empty([T + 1, 2])
+    velocity[0, :] = current_velocity
+
+    positions = np.empty([T + 1, 2])
+    positions[0, :] = current_pos
+
+    if logging:
+        cx_log = CXLogger(0, T + 1, cx)
+    else:
+        cx_log = None
+
+    inrew=[]
+    for t in range(1, T + 1):
+        r = headings[t - 1] - headings[t - 2]
+        r = (r + np.pi) % (2 * np.pi) - np.pi
+        tl2, cl1, tb1, tn1, tn2, memory, cpu4, cpu1, motor = update_cells(
+            heading=headings[t - 1] + np.sign(r) * bump_shift,  # Remove sign to use proportionate shift
+            velocity=velocity[t - 1],
+            tb1=tb1,
+            memory=memory,
+            cx=cx,
+            filtered_steps=filtered_steps)
+        if logging:
+            cx_log.update_log(t, tl2, cl1, tb1, tn1, tn2, memory, cpu4, cpu1,
+                              motor)
+        rotation = turn_sharpness * motor
+
+        headings[t], velocity[t, :] = bee_simulator.get_next_state(
+            headings[t - 1], velocity[t - 1, :], rotation, acceleration, drag)
+
+        positions[t, :] = positions[t-1, :] + velocity[t, :]
+        if point_in_reward(positions[t, :], reward):
+            # print('in')
+            memory = init_memory()
+            inrew.append(positions[t])
+
+    return dict(h=headings, v=velocity, pos=positions, log=cx_log, in_reward=inrew)

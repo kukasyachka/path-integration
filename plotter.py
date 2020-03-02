@@ -164,7 +164,7 @@ def plot_traces(log, include=['TN1', 'TN2', 'CL1', 'TB1', 'CPU4', 'CPU1', 'motor
                 fig=None, ax=None, colormap='viridis', title_x=-0.15,
                 alpha=0.2, outbound_color='purple', return_color='g',
                 label_font_size=11, unit_font_size=10, dashes=[1, 2, 1, 2],
-                T_almost_home=None, t_start=0):
+                T_almost_home=None, t_start=0, figsize=(nature_single, nature_single)):
     """Generate big plot with all traces of model. Warning: takes long time to
     save!!"""
     T, T_outbound, T_inbound = log.T, log.T_outbound, log.T_inbound
@@ -180,7 +180,7 @@ def plot_traces(log, include=['TN1', 'TN2', 'CL1', 'TB1', 'CPU4', 'CPU1', 'motor
     # Generate new plot if no axes passed in.
     if ax is None:
         fig, ax = plt.subplots(len(include), 1,
-                               figsize=(nature_single, nature_single))
+                               figsize=figsize)
 
     N_plots = len(include)
     for i, cell_type in enumerate(include):
@@ -231,7 +231,10 @@ def plot_traces(log, include=['TN1', 'TN2', 'CL1', 'TB1', 'CPU4', 'CPU1', 'motor
             ax[i].set_yticklabels([0, 360])
         elif cell_type in ['TL2', 'CL1', 'TB1', 'CPU4', 'CPU1']:
             # Surface plots related to memory generation.
-            p = ax[i].pcolormesh(data[cell_type], vmin=0, vmax=1,
+            vmax=1
+            # if cell_type=='CPU4':
+            #     vmax=0.5
+            p = ax[i].pcolormesh(data[cell_type], vmin=0, vmax=vmax,
                                  cmap=colormap, rasterized=True);
             ax[i].get_xaxis().set_tick_params(direction='out')
             if cell_type == 'TB1':

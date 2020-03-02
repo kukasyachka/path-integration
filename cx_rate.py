@@ -71,9 +71,12 @@ class CXRate(CX):
                  motor_slope=motor_slope_tuned,
                  motor_bias=motor_bias_tuned,
                  weight_noise=0.0,
+                 random_seed=None,
                  **kwargs):
 
         super(CXRate, self).__init__(**kwargs)
+        if random_seed:
+            np.random.seed(random_seed)
         # Default noise used by the model for all layers
         self.noise = noise
 
@@ -225,9 +228,10 @@ class CXRate(CX):
 class CXRatePontin(CXRate):
 
     def __init__(self, *args, **kwargs):
-
+        self.k_mem_loss = kwargs.pop('mem_loss_k', 0.125)
         super(CXRatePontin, self).__init__(**kwargs)
         self.cpu4_mem_gain *= 0.5
+
         self.cpu1_bias = -1.0
         self.cpu1_slope = 7.5
 
@@ -266,7 +270,8 @@ class CXRatePontin(CXRate):
         mem_update = np.clip(mem_update, 0, 1)
         mem_update *= self.cpu4_mem_gain
         cpu4_mem += mem_update
-        cpu4_mem -= 0.125 * self.cpu4_mem_gain
+        #cpu4_mem -= 0.125 * self.cpu4_mem_gain
+        cpu4_mem -= self.k_mem_loss * self.cpu4_mem_gain
 
         return np.clip(cpu4_mem, 0.0, 1.0)
 
@@ -383,3 +388,37 @@ class CXRatePontinHolonomic(CXRatePontin):
 
     def __str__(self):
         return "rate_pontin_holo"
+
+
+class CXRatePontinSwitch(CXRatePontin):
+
+    def __init__(self, *args, **kwargs):
+
+        super(CXRatePontinSwitch, self).__init__(**kwargs)
+        self.switch_listen_cpu4 = True
+        # self.switch_update_cpu4 = True
+
+        self.W_CPU4_pontin_on = self.W_CPU4_pontin.copy()
+        self.W_CPU4_pontin_off = np.zeros_like(self.W_CPU4_pontin)
+
+        self.W_CPU4_CPU1a_on = self.W_CPU4_CPU1a.copy()
+        self.W_CPU4_CPU1a_off = np.zeros_like(self.W_CPU4_CPU1a)
+
+        self.W_CPU4_CPU1b_on = self.W_CPU4_CPU1b.copy()
+        self.W_CPU4_CPU1b_off = np.zeros_like(self.W_CPU4_CPU1b)
+
+    def set_cpu4_listen(self, is_on):
+        if is_on == self.switch_listen_cpu4:
+            return
+        if is_on:
+            self.W_CPU4_CPU1a = self.W_CPU4_CPU1a_on
+            self.W_CPU4_CPU1b = self.W_CPU4_CPU1b_on
+            self.W_CPU4_pontin = self.W_CPU4_pontin_on
+        else:
+            self.W_CPU4_CPU1a = self.W_CPU4_CPU1a_off
+            self.W_CPU4_CPU1b = self.W_CPU4_CPU1b_off
+            self.W_CPU4_pontin = self.W_CPU4_pontin_off
+        self.switch_listen_cpu4 = is_on
+
+    def __str__(self):
+        return "rate_pontin with a switch"
