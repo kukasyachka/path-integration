@@ -391,6 +391,10 @@ def run_trial_switch(T_outbound=1500, T_inbound=1500,
         filtered_steps=filtered_steps, drag=drag)
 
     outbound_data = parse_walk_func_output(walk_func, outbound_data)
+    # for k, data in outbound_data.iteritems():
+    #     print(k)
+        # print(data)
+        # print(len(data))
     # will not work without logging
 
     memory = outbound_data['log'].memory[:, -1]
@@ -405,7 +409,7 @@ def run_trial_switch(T_outbound=1500, T_inbound=1500,
     # Start homing and store headings, velocity and cell activity.
 
     last_pos = None
-    if 'pos' in outbound_data:
+    if 'pos' in outbound_data and outbound_data['pos'] is not None:
         last_pos = outbound_data['pos'][-1]
     inbound_data = walk_func(
         T=T_inbound, tb1=tb1, memory=memory, cx=cx,
