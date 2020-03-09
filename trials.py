@@ -56,7 +56,7 @@ class CXLogger(object):
     def __add__(self, other):
         """Combine two logs into one big one (normally outbound and
         inbound)."""
-        combined = CXLogger(T_outbound=self.T, T_inbound=other.T-1, cx=self.cx)
+        combined = CXLogger(T_outbound=self.T, T_inbound=other.T - 1, cx=self.cx)
         combined.tl2[:, :self.T] = self.tl2
         combined.cl1[:, :self.T] = self.cl1
         combined.tb1[:, :self.T] = self.tb1
@@ -116,7 +116,7 @@ def generate_route(T=1500, mean_acc=default_acc, drag=default_drag,
 
     for t in range(1, T):
         headings[t], velocity[t, :] = bee_simulator.get_next_state(
-            heading=headings[t-1], velocity=velocity[t-1, :],
+            heading=headings[t - 1], velocity=velocity[t - 1, :],
             rotation=rotation[t], acceleration=acceleration[t], drag=drag)
     return headings, velocity
 
@@ -208,7 +208,7 @@ def homing(T, tb1, memory, cx, acceleration=default_acc, drag=default_drag,
 def run_trial(route=None, T_outbound=1500, T_inbound=1500, acc_out=default_acc,
               acc_in=0.1, noise=0.1, weight_noise=0.0, vary_speed=True,
               cx=None, cx_class=cx_rate.CXRate, logging=True, random_homing=False, bump_shift=0.0,
-              filtered_steps=0.0, drag=default_drag, tn_prefs=np.pi/4.0):
+              filtered_steps=0.0, drag=default_drag, tn_prefs=np.pi / 4.0):
     """Generate outbound and inbound route and store results.
 
     Arguments:
@@ -240,7 +240,7 @@ def run_trial(route=None, T_outbound=1500, T_inbound=1500, acc_out=default_acc,
     # Start homing and store headings, velocity and cell activity.
     if random_homing:
         # T_inbound+1 to take into account duplicate first value on normal runs
-        h_in, v_in = generate_route(T=T_inbound+1, mean_acc=acc_in, drag=drag,
+        h_in, v_in = generate_route(T=T_inbound + 1, mean_acc=acc_in, drag=drag,
                                     max_acc=acc_in, vary_speed=vary_speed)
         if logging:
             log_in = generate_memory(headings=h_in, velocity=v_in, cx=cx,
@@ -303,9 +303,9 @@ def save_route(h, v, cx_log, filename='route.npz'):
 
 def generate_filename(T_outbound, T_inbound, noise, N, **kwargs):
     filename = 'out{0}_in{1}_noise{2}_N{3}'.format(str(T_outbound),
-                                                str(T_inbound),
-                                                str(noise),
-                                                str(N))
+                                                   str(T_inbound),
+                                                   str(noise),
+                                                   str(N))
     for k, v in kwargs.iteritems():
         filename += '_' + k + str(v)
     return filename + '.npz'
@@ -336,16 +336,16 @@ def generate_dataset(T_outbound=1500, T_inbound=1500, noise=0.1, N=1000,
                                            **kwargs)
     except:
         T = T_outbound + T_inbound
-        H = np.empty([N, T+1])
-        V = np.empty([N, T+1, 2])  # TODO(tomish) why is this shape larger?
+        H = np.empty([N, T + 1])
+        V = np.empty([N, T + 1, 2])  # TODO(tomish) why is this shape larger?
         cpu4_snapshot = np.empty([N, central_complex.N_CPU4])
         for i in range(N):
             H[i, :], V[i, :, :], _, cpu4_snapshot[i, :] = run_trial(
-                    T_outbound=T_outbound,
-                    T_inbound=T_inbound,
-                    noise=noise,
-                    logging=False,
-                    **kwargs)
+                T_outbound=T_outbound,
+                T_inbound=T_inbound,
+                noise=noise,
+                logging=False,
+                **kwargs)
         if save:
             save_dataset(H, V, cpu4_snapshot, T_outbound, T_inbound, noise, N,
                          **kwargs)
@@ -363,9 +363,10 @@ def parse_walk_func_output(walk_func, data):
 
 
 def run_trial_switch(T_outbound=1500, T_inbound=1500,
-              acc_in=0.1, noise=0.1, weight_noise=0.0,
-              cx=None, cx_class=cx_rate.CXRatePontinSwitch, logging=True, bump_shift=0.0,
-              filtered_steps=0.0, drag=default_drag, tn_prefs=np.pi/4.0, mode='Nest', walk_func=homing, reward_radius=50):
+                     acc_in=0.1, noise=0.1, weight_noise=0.0,
+                     cx=None, cx_class=cx_rate.CXRatePontinSwitch, logging=True, bump_shift=0.0,
+                     filtered_steps=0.0, drag=default_drag, tn_prefs=np.pi / 4.0, mode='Nest',
+                     walk_func=homing, reward_radius=1, init_velocity=0.1):
     """Generate outbound and inbound route and store results.
 
     Arguments:
@@ -380,7 +381,7 @@ def run_trial_switch(T_outbound=1500, T_inbound=1500,
 
     memory = init_memory()
     init_heading = 0
-    init_velocity = 0.1
+    # init_velocity = 0.1
 
     cx.set_cpu4_listen(False)
 
@@ -393,8 +394,8 @@ def run_trial_switch(T_outbound=1500, T_inbound=1500,
     outbound_data = parse_walk_func_output(walk_func, outbound_data)
     # for k, data in outbound_data.iteritems():
     #     print(k)
-        # print(data)
-        # print(len(data))
+    # print(data)
+    # print(len(data))
     # will not work without logging
 
     memory = outbound_data['log'].memory[:, -1]
@@ -411,6 +412,7 @@ def run_trial_switch(T_outbound=1500, T_inbound=1500,
     last_pos = None
     if 'pos' in outbound_data and outbound_data['pos'] is not None:
         last_pos = outbound_data['pos'][-1]
+    print('last velocity (outbound): ', outbound_data['v'][-1])
     inbound_data = walk_func(
         T=T_inbound, tb1=tb1, memory=memory, cx=cx,
         acceleration=acc_in, current_heading=outbound_data['h'][-1],
@@ -420,6 +422,8 @@ def run_trial_switch(T_outbound=1500, T_inbound=1500,
     inbound_data = parse_walk_func_output(walk_func, inbound_data)
 
     results = {'cpu4_snapshot': cpu4_snapshot,
+               't_in': T_inbound,
+               't_out': T_outbound,
                'h': np.hstack([outbound_data['h'], inbound_data['h']]),
                'v': np.vstack([outbound_data['v'], inbound_data['v']])}
     if 'pos' in outbound_data:
@@ -443,14 +447,13 @@ def point_in_reward(coords, reward):
     cx, cy = reward['center']
     r = reward['radius']
     x, y = coords
-    return (x-cx)**2 + (y-cy)**2 <= r**2
+    return (x - cx) ** 2 + (y - cy) ** 2 <= r ** 2
 
 
 def walking(T, tb1, memory, cx, acceleration=default_acc, drag=default_drag,
-           current_heading=0.0, current_velocity=np.array([0.0, 0.0]),
-           turn_sharpness=1.0, logging=True, bump_shift=0.0,
-           filtered_steps=0.0, current_pos=[0, 0], reward=None):
-
+            current_heading=0.0, current_velocity=np.array([0.0, 0.0]),
+            turn_sharpness=1.0, logging=True, bump_shift=0.0,
+            filtered_steps=0.0, current_pos=[0, 0], reward=None):
     headings = np.empty(T + 1)
     headings[0] = current_heading
     velocity = np.empty([T + 1, 2])
@@ -464,7 +467,7 @@ def walking(T, tb1, memory, cx, acceleration=default_acc, drag=default_drag,
     else:
         cx_log = None
 
-    inrew=[]
+    inrew = []
     for t in range(1, T + 1):
         r = headings[t - 1] - headings[t - 2]
         r = (r + np.pi) % (2 * np.pi) - np.pi
@@ -483,7 +486,7 @@ def walking(T, tb1, memory, cx, acceleration=default_acc, drag=default_drag,
         headings[t], velocity[t, :] = bee_simulator.get_next_state(
             headings[t - 1], velocity[t - 1, :], rotation, acceleration, drag)
 
-        positions[t, :] = positions[t-1, :] + velocity[t, :]
+        positions[t, :] = positions[t - 1, :] + velocity[t, :]
         if point_in_reward(positions[t, :], reward):
             # print('in')
             memory = init_memory()
