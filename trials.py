@@ -404,8 +404,8 @@ def run_trial_switch(T_outbound=1500, T_inbound=1500,
     if mode == 'FlyFood':
         memory = init_memory()
         reward = {'center': outbound_data['pos'][-1], 'radius': reward_radius}
-
-    cx.set_cpu4_listen(True)
+    if mode != 'Control':
+        cx.set_cpu4_listen(True)
 
     # Start homing and store headings, velocity and cell activity.
 
